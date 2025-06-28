@@ -18,11 +18,11 @@ const ProcessingStatus = ({
   
   const currentStageIndex = stages.findIndex(s => s.key === stage)
   
-  const stageMessages = {
+const stageMessages = {
     upload: 'Uploading your Excel file...',
-    analyze: 'Analyzing worksheets...',
-    process: `Processing worksheets... ${currentWorksheet ? `(${currentWorksheet})` : ''}`,
-    download: 'Preparing download...',
+    analyze: 'Analyzing worksheets and Excel tables...',
+    process: `Processing worksheets and preserving tables... ${currentWorksheet ? `(${currentWorksheet})` : ''}`,
+    download: 'Preparing download with preserved formatting...',
     complete: 'Processing complete!'
   }
 

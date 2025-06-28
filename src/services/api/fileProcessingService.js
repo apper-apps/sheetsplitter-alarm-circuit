@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx'
+import * as XLSXStyle from 'xlsx-js-style'
 import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
-
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms))
 
 class FileProcessingService {
@@ -27,7 +27,7 @@ class FileProcessingService {
     return true
   }
 
-  async analyzeWorkbook(file) {
+async analyzeWorkbook(file) {
     await delay(300)
     
     return new Promise((resolve, reject) => {
@@ -36,18 +36,31 @@ class FileProcessingService {
       reader.onload = (e) => {
         try {
           const data = new Uint8Array(e.target.result)
-          const workbook = XLSX.read(data, { type: 'array' })
+          const workbook = XLSXStyle.read(data, { 
+            type: 'array',
+            cellStyles: true,
+            cellNF: true,
+            cellHTML: false
+          })
+          
+          // Count total tables across all worksheets
+          let totalTables = 0
           
           const worksheets = workbook.SheetNames.map((name, index) => {
             const sheet = workbook.Sheets[name]
             const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1:A1')
+            
+            // Count tables in this worksheet
+            const sheetTables = sheet['!tables'] ? sheet['!tables'].length : 0
+            totalTables += sheetTables
             
             return {
               name,
               index,
               rowCount: range.e.r + 1,
               columnCount: range.e.c + 1,
-              hasData: !!sheet['!ref']
+              hasData: !!sheet['!ref'],
+              tableCount: sheetTables
             }
           })
           
@@ -57,7 +70,8 @@ class FileProcessingService {
               name: file.name,
               size: file.size,
               uploadTime: new Date().toISOString(),
-              status: 'analyzed'
+              status: 'analyzed',
+              totalTables
             },
             worksheets,
             workbook
@@ -82,18 +96,39 @@ async processWorksheets(workbook, selectedWorksheets, onProgress) {
     const totalSheets = selectedWorksheets.length
     
     for (let i = 0; i < selectedWorksheets.length; i++) {
-const worksheet = selectedWorksheets[i]
+      const worksheet = selectedWorksheets[i]
       
-      // Create new workbook with single sheet
-      const newWorkbook = XLSX.utils.book_new()
+      // Create new workbook with single sheet - preserve all formatting and tables
+      const newWorkbook = XLSXStyle.utils.book_new()
       const sheet = workbook.Sheets[worksheet.name]
       
-      XLSX.utils.book_append_sheet(newWorkbook, sheet, worksheet.name)
+      // Deep copy the sheet to preserve all properties including tables
+      const newSheet = JSON.parse(JSON.stringify(sheet))
       
-      // Generate Excel buffer
-      const excelBuffer = XLSX.write(newWorkbook, {
+      // Preserve Excel tables if they exist
+      if (sheet['!tables']) {
+        newSheet['!tables'] = JSON.parse(JSON.stringify(sheet['!tables']))
+      }
+      
+      // Preserve other sheet properties
+      if (sheet['!autofilter']) newSheet['!autofilter'] = sheet['!autofilter']
+      if (sheet['!merges']) newSheet['!merges'] = sheet['!merges']
+      if (sheet['!cols']) newSheet['!cols'] = sheet['!cols']
+      if (sheet['!rows']) newSheet['!rows'] = sheet['!rows']
+      if (sheet['!protect']) newSheet['!protect'] = sheet['!protect']
+      if (sheet['!margins']) newSheet['!margins'] = sheet['!margins']
+      
+      XLSXStyle.utils.book_append_sheet(newWorkbook, newSheet, worksheet.name)
+      
+      // Preserve workbook-level properties for formatting consistency
+      this.preserveWorkbookProperties(workbook, newWorkbook)
+      
+      // Generate Excel buffer with full styling preservation
+      const excelBuffer = XLSXStyle.write(newWorkbook, {
         bookType: 'xlsx',
-        type: 'array'
+        type: 'array',
+        cellStyles: true,
+        cellNF: true
       })
       
       // Add to zip with clean filename
@@ -110,6 +145,38 @@ const worksheet = selectedWorksheets[i]
     }
     
     return zip
+  }
+
+  preserveWorkbookProperties(sourceWorkbook, targetWorkbook) {
+    // Copy workbook-level properties that affect formatting and functionality
+    if (sourceWorkbook.Props) {
+      targetWorkbook.Props = JSON.parse(JSON.stringify(sourceWorkbook.Props))
+    }
+    
+    if (sourceWorkbook.Custprops) {
+      targetWorkbook.Custprops = JSON.parse(JSON.stringify(sourceWorkbook.Custprops))
+    }
+    
+    // Preserve workbook themes and styles
+    if (sourceWorkbook.Themes) {
+      targetWorkbook.Themes = sourceWorkbook.Themes
+    }
+    
+    if (sourceWorkbook.SSF) {
+      targetWorkbook.SSF = sourceWorkbook.SSF
+    }
+    
+    // Preserve defined names (named ranges)
+    if (sourceWorkbook.Workbook && sourceWorkbook.Workbook.Names) {
+      if (!targetWorkbook.Workbook) targetWorkbook.Workbook = {}
+      targetWorkbook.Workbook.Names = JSON.parse(JSON.stringify(sourceWorkbook.Workbook.Names))
+    }
+    
+    // Preserve workbook views and calculation properties
+    if (sourceWorkbook.Workbook && sourceWorkbook.Workbook.Views) {
+      if (!targetWorkbook.Workbook) targetWorkbook.Workbook = {}
+      targetWorkbook.Workbook.Views = JSON.parse(JSON.stringify(sourceWorkbook.Workbook.Views))
+    }
   }
 
   async generateDownload(zip, originalFileName) {

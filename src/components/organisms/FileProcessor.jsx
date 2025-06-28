@@ -220,6 +220,12 @@ setStage('complete')
                   <span>{formatFileSize(file.size)}</span>
                   <span>•</span>
                   <span>{worksheets.length} worksheets</span>
+                  {file.totalTables > 0 && (
+                    <>
+                      <span>•</span>
+                      <span>{file.totalTables} Excel tables</span>
+                    </>
+                  )}
                   <span>•</span>
                   <span>{selectedWorksheets.length} selected</span>
                 </div>
@@ -348,7 +354,7 @@ setStage('complete')
             Processing Complete!
           </h3>
 <p className="text-green-700 mb-4">
-            Your {selectedWorksheets.length} selected worksheets have been split into separate files and packaged into a ZIP archive.
+            Your {selectedWorksheets.length} selected worksheets have been split into separate files with all Excel tables, formatting, and data preserved. Files are packaged in a ZIP archive.
           </p>
           
           <div className="flex justify-center space-x-3">
